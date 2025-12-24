@@ -52,7 +52,14 @@ jobs:
         cp -r mlruns artifacts/ || true
         cp MLProject/*.png artifacts/ || true
         cp MLProject/*.json artifacts/ || true
-    
+    - name: Collect training outputs
+      if: success()
+      run: |
+        mkdir -p training-outputs
+        cp MLProject/*.png training-outputs/ 2>/dev/null || true
+        cp MLProject/*.json training-outputs/ 2>/dev/null || true
+        cp MLProject/*.pkl training-outputs/ 2>/dev/null || true
+        ls -la training-outputs/
     - name: Upload artifacts to GitHub
       if: success()
       uses: actions/upload-artifact@v4

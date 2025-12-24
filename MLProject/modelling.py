@@ -150,37 +150,60 @@ def train():
     mlflow.log_metric("roc_auc", auc)
     mlflow.log_metric("cv_score", grid.best_score_)
     
-    # Log model (without signature to avoid issues)
-    try:
-        mlflow.sklearn.log_model(
-            model, 
-            "model",
-            registered_model_name=None
-        )
-    except Exception as e:
-        print(f"Warning: Model logging issue: {e}")
-        # Try alternative method
-        import pickle
-        model_path = "model.pkl"
-        with open(model_path, 'wb') as f:
-            pickle.dump(model, f)
-        mlflow.log_artifact(model_path)
+    # Log model only if not in CI environment
+    is_ci = os.getenv('CI') == 'true' or os.getenv('GITHUB_ACTIONS') == 'true'
     
-    # Log artifacts
+    if not is_ci:
+        try:
+            mlflow.sklearn.log_model(
+                model, 
+                "model",
+                registered_model_name=None
+            )
+            print("✓ Model logged")
+        except Exception as e:
+            print(f"Warning: Model logging skipped: {e}")
+    else:
+        print("ℹ CI environment detected - skipping model logging")
+        # Save model as pickle artifact instead
+        try:
+            import pickle
+            model_path = "model.pkl"
+            with open(model_path, 'wb') as f:
+                pickle.dump(model, f)
+            print(f"✓ Model saved as {model_path}")
+        except Exception as e:
+            print(f"Warning: Could not save model: {e}")
+    
+    # Log artifacts (plots only for CI - no file artifacts due to permission issues)
     try:
-        mlflow.log_artifact(plot_confusion_matrix(y_test, y_pred))
-        mlflow.log_artifact(plot_feature_importance(model, features))
-        mlflow.log_artifact(plot_roc_curve(y_test, y_proba))
+        cm_path = plot_confusion_matrix(y_test, y_pred)
+        fi_path = plot_feature_importance(model, features)
+        roc_path = plot_roc_curve(y_test, y_proba)
         
-        # Classification report
+        print(f"✓ Plots created: {cm_path}, {fi_path}, {roc_path}")
+        
+        # Only log to MLflow if not in CI (to avoid path issues)
+        if not is_ci:
+            mlflow.log_artifact(cm_path)
+            mlflow.log_artifact(fi_path)
+            mlflow.log_artifact(roc_path)
+            print("✓ Plots logged to MLflow")
+        
+        # Classification report (as dict, not file)
         report = classification_report(y_test, y_pred, 
                                       target_names=['No Churn', 'Churn'],
                                       output_dict=True)
-        with open("classification_report.json", 'w') as f:
+        report_path = "classification_report.json"
+        with open(report_path, 'w') as f:
             json.dump(report, f, indent=4)
-        mlflow.log_artifact("classification_report.json")
+        print(f"✓ Report saved: {report_path}")
+        
+        if not is_ci:
+            mlflow.log_artifact(report_path)
+            
     except Exception as e:
-        print(f"Warning: Some artifacts could not be logged: {e}")
+        print(f"Warning: Some artifacts could not be created: {e}")
     
     # Tags
     try:
