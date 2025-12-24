@@ -1,8 +1,3 @@
-"""
-MLflow Project - Telco Churn Prediction
-For CI/CD Pipeline - NO START_RUN CONFLICT
-"""
-
 import pandas as pd
 import numpy as np
 import mlflow
@@ -19,16 +14,18 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import json
 import os
+import sys
 
-# Set MLflow tracking to local directory
-os.environ['MLFLOW_TRACKING_URI'] = 'file:./mlruns'
+# Force local tracking URI
+mlflow.set_tracking_uri("file:./mlruns")
+print(f"✓ MLflow tracking: {mlflow.get_tracking_uri()}")
 
 def load_data():
     """Load preprocessed dataset"""
     possible_paths = [
         "telco_churn_preprocessed.csv",
         "./telco_churn_preprocessed.csv",
-        "MLProject/telco_churn_preprocessed.csv",
+        os.path.join(os.getcwd(), "telco_churn_preprocessed.csv"),
     ]
     
     for path in possible_paths:
@@ -36,7 +33,7 @@ def load_data():
             print(f"✓ Found dataset at: {path}")
             return pd.read_csv(path)
     
-    raise FileNotFoundError("Dataset not found")
+    raise FileNotFoundError(f"Dataset not found. Searched: {possible_paths}")
 
 def plot_confusion_matrix(y_true, y_pred, save_path="confusion_matrix.png"):
     cm = confusion_matrix(y_true, y_pred)
@@ -48,7 +45,7 @@ def plot_confusion_matrix(y_true, y_pred, save_path="confusion_matrix.png"):
     plt.ylabel('True')
     plt.xlabel('Predicted')
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300)
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
     return save_path
 
@@ -61,7 +58,7 @@ def plot_feature_importance(model, features, save_path="feature_importance.png")
     plt.bar(range(len(indices)), importances[indices])
     plt.xticks(range(len(indices)), [features[i] for i in indices], rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300)
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
     return save_path
 
@@ -77,12 +74,12 @@ def plot_roc_curve(y_true, y_proba, save_path="roc_curve.png"):
     plt.title('ROC Curve')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300)
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
     return save_path
 
 def train():
-    """Main training function - NO start_run()"""
+    """Main training function"""
     
     print("="*60)
     print("CI/CD Pipeline - Model Training")
@@ -136,11 +133,14 @@ def train():
     f1 = f1_score(y_test, y_pred)
     auc = roc_auc_score(y_test, y_proba)
     
-    # Log params (avoid conflict with MLproject params)
-    mlflow.log_params(grid.best_params_)
-    mlflow.log_param("cv_folds", 3)
-    mlflow.log_param("train_samples", len(X_train))
-    mlflow.log_param("test_samples", len(X_test))
+    # Log params (avoid conflicts)
+    try:
+        mlflow.log_params(grid.best_params_)
+        mlflow.log_param("cv_folds", 3)
+        mlflow.log_param("train_samples", len(X_train))
+        mlflow.log_param("test_samples", len(X_test))
+    except Exception as e:
+        print(f"Warning: Could not log some params: {e}")
     
     # Log metrics
     mlflow.log_metric("accuracy", acc)
@@ -150,25 +150,45 @@ def train():
     mlflow.log_metric("roc_auc", auc)
     mlflow.log_metric("cv_score", grid.best_score_)
     
-    # Log model
-    mlflow.sklearn.log_model(model, "model")
+    # Log model (without signature to avoid issues)
+    try:
+        mlflow.sklearn.log_model(
+            model, 
+            "model",
+            registered_model_name=None
+        )
+    except Exception as e:
+        print(f"Warning: Model logging issue: {e}")
+        # Try alternative method
+        import pickle
+        model_path = "model.pkl"
+        with open(model_path, 'wb') as f:
+            pickle.dump(model, f)
+        mlflow.log_artifact(model_path)
     
     # Log artifacts
-    mlflow.log_artifact(plot_confusion_matrix(y_test, y_pred))
-    mlflow.log_artifact(plot_feature_importance(model, features))
-    mlflow.log_artifact(plot_roc_curve(y_test, y_proba))
-    
-    # Classification report
-    report = classification_report(y_test, y_pred, 
-                                  target_names=['No Churn', 'Churn'],
-                                  output_dict=True)
-    with open("classification_report.json", 'w') as f:
-        json.dump(report, f, indent=4)
-    mlflow.log_artifact("classification_report.json")
+    try:
+        mlflow.log_artifact(plot_confusion_matrix(y_test, y_pred))
+        mlflow.log_artifact(plot_feature_importance(model, features))
+        mlflow.log_artifact(plot_roc_curve(y_test, y_proba))
+        
+        # Classification report
+        report = classification_report(y_test, y_pred, 
+                                      target_names=['No Churn', 'Churn'],
+                                      output_dict=True)
+        with open("classification_report.json", 'w') as f:
+            json.dump(report, f, indent=4)
+        mlflow.log_artifact("classification_report.json")
+    except Exception as e:
+        print(f"Warning: Some artifacts could not be logged: {e}")
     
     # Tags
-    mlflow.set_tag("model", "RandomForest")
-    mlflow.set_tag("pipeline", "CI/CD")
+    try:
+        mlflow.set_tag("model", "RandomForest")
+        mlflow.set_tag("pipeline", "CI/CD")
+        mlflow.set_tag("platform", sys.platform)
+    except Exception as e:
+        print(f"Warning: Could not set tags: {e}")
     
     # Results
     print("\n" + "="*60)
@@ -184,4 +204,10 @@ def train():
     print("="*60)
 
 if __name__ == "__main__":
-    train()
+    try:
+        train()
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
