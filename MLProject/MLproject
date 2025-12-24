@@ -7,4 +7,4 @@ entry_points:
     parameters:
       test_size: {type: float, default: 0.2}
       random_state: {type: int, default: 42}
-    command: "python modelling.py"
+    command: "export MLFLOW_TRACKING_URI=file:./mlruns && python modelling.py"
