@@ -1,3 +1,7 @@
+"""
+MLflow Project - Telco Churn Prediction
+For CI/CD Pipeline - NO START_RUN CONFLICT
+"""
 
 import pandas as pd
 import numpy as np
@@ -15,6 +19,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import json
 import os
+
+# Set MLflow tracking to local directory
+os.environ['MLFLOW_TRACKING_URI'] = 'file:./mlruns'
 
 def load_data():
     """Load preprocessed dataset"""
@@ -129,7 +136,7 @@ def train():
     f1 = f1_score(y_test, y_pred)
     auc = roc_auc_score(y_test, y_proba)
     
-    # Log params
+    # Log params (avoid conflict with MLproject params)
     mlflow.log_params(grid.best_params_)
     mlflow.log_param("cv_folds", 3)
     mlflow.log_param("train_samples", len(X_train))
