@@ -1,0 +1,74 @@
+name: MLflow CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install mlflow==2.19.0
+        pip install scikit-learn==1.5.1
+        pip install pandas==2.2.2
+        pip install numpy==1.26.4
+        pip install matplotlib==3.9.0
+        pip install seaborn==0.13.2
+    
+    - name: Verify dataset exists
+      run: |
+        ls -la MLProject/
+        if [ ! -f MLProject/telco_churn_preprocessed.csv ]; then
+          echo "Error: Dataset not found!"
+          exit 1
+        fi
+        echo "✓ Dataset found"
+    
+    - name: Run MLflow Project
+      working-directory: ./MLProject
+      run: |
+        echo "Starting MLflow training..."
+        mlflow run . --env-manager=local
+    
+    - name: Create artifacts directory
+      if: success()
+      run: |
+        mkdir -p artifacts
+        cp -r mlruns artifacts/ || true
+        cp MLProject/*.png artifacts/ || true
+        cp MLProject/*.json artifacts/ || true
+    
+    - name: Upload artifacts to GitHub
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mlflow-training-artifacts
+        path: artifacts/
+        retention-days: 30
+    
+    - name: Print completion message
+      if: success()
+      run: |
+        echo "=========================================="
+        echo "✅ CI/CD Pipeline Completed Successfully!"
+        echo "=========================================="
+        echo "Artifacts uploaded to GitHub Actions"
+
+
+
+
